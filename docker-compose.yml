@@ -1,0 +1,90 @@
+version: '3.9'
+services:
+  metabase:
+    image: metabase/metabase-enterprise:v1.48.8
+    container_name: metabase
+    hostname: metabase
+    volumes: 
+    - /dev/urandom:/dev/random:ro
+    ports:
+      - 3000:3000
+    environment:
+      MB_DB_DBNAME: "metabase"
+      MB_DB_PORT: "3306"
+      MB_DB_USER: "metabase"
+      MB_DB_PASS: "mysecretpassword"
+      MB_DB_HOST: "mysql-app-db"
+      MB_DB_TYPE: "mysql"
+      JAVA_TOOL_OPTIONS: -Xmx1488m -Xms500m 
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 3072M
+        reservations:
+          cpus: '1'
+          memory: 1536M
+    networks: 
+      - metanet1-mysql
+    healthcheck:
+      test: curl --fail -X GET -I http://localhost:3000/api/health || exit 1
+      interval: 15s
+      timeout: 30s
+      retries: 10
+  mysql-app-db:
+    image: mariadb:11.2.2
+    # image: mysql:5.7.26
+    container_name: mysql-app-db
+    hostname: mysql-app-db
+    ports:
+      - 3306:3306
+    environment:
+      - "MYSQL_ROOT_PASSWORD=mysecretpassword"
+      - "MYSQL_USER=metabase"
+      - "MYSQL_PASSWORD=mysecretpassword"
+      - "MYSQL_DATABASE=metabase"
+    volumes:
+      # - $PWD/mysql-data:/var/lib/mysql
+      - $PWD/mysql-app-db-config/my.cnf:/etc/mysql/conf.d/my.cnf:ro
+    # command: ['--default-authentication-plugin=mysql_native_password', '--mysqlx=0']
+    # command: ['--default-authentication-plugin=mysql_native_password']
+    networks: 
+      - metanet1-mysql
+  setup-mysql:
+    build: setup/.
+    container_name: setup-postgres
+    volumes:
+      - $PWD/setup/setup.py:/app/setup.py
+    networks:
+      - metanet1-mysql
+    command: python /app/setup.py
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 64M
+        reservations:
+          cpus: '0.5'
+          memory: 32M
+    environment:
+      host: http://metabase
+      port: 3000
+      dbs: 1
+  singlestore:
+    container_name: singlestore
+    hostname: singlestore
+    image: ghcr.io/singlestore-labs/singlestoredb-dev:0.2.14
+    ports:
+      - 3309:3306
+      - 8080:8080
+    networks:
+    - metanet1-mysql
+    volumes:
+      - $PWD/data/init.sql:/init.sql
+    environment:
+      # enter your singlestore license here
+      SINGLESTORE_LICENSE: "xxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ROOT_PASSWORD: "metasample123"
+networks: 
+  metanet1-mysql:
+    driver: bridge
